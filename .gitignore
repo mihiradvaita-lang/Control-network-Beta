@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+*.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Local data / editor artifacts
+*.log
+.DS_Store
+skills/specialized.md
+skills/customer.skill.md

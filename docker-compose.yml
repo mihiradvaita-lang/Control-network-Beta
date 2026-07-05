@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    environment:
+      # Force 0.0.0.0 inside the container; Docker's port mapping handles external access.
+      CN_HOST: "0.0.0.0"
+    restart: unless-stopped

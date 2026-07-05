@@ -1,0 +1,1513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Control Network — Triage Copilot</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS
+   Warm-charcoal base, 4 layered surfaces (page < panel < card < raised),
+   hairline borders, ONE brand accent (amber-gold) reserved for interactive /
+   brand moments. Green means live/good/ok ONLY. Severity stays universal:
+   red=critical, amber=warning/high, blue=info, green=good.
+   Contrast targets: --text 4.5:1+, --text-2 / --muted 3:1+ on their surfaces.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* surface ladder */
+  --bg:#15120f;          /* page — deepest */
+  --panel:#1b1714;       /* panels / rails */
+  --card:#231e19;        /* cards, inputs */
+  --raised:#2c2620;      /* hover / raised / chips */
+  --raised-2:#37302a;    /* pressed / strong hover */
+  /* hairlines (warm white at low alpha) */
+  --border:rgba(255,244,230,.075);
+  --border-2:rgba(255,244,230,.12);
+  --border-strong:rgba(255,244,230,.20);
+  /* text */
+  --text:#f0e9df;        /* primary body / titles */
+  --text-2:#c3b9ab;      /* secondary */
+  --muted:#8f8577;       /* meta / labels */
+  --faint:#948a7c;       /* disabled / decorative */
+  /* brand accent — amber-gold, the ONE interactive/brand hue */
+  --accent:#e8b160; --accent-strong:#f2c074; --accent-ink:#241705;
+  --accent-dim:rgba(232,177,96,.15); --accent-soft:rgba(232,177,96,.09);
+  --accent-line:rgba(232,177,96,.32);
+  /* semantics */
+  --green:#5fbf7f; --green-dim:rgba(95,191,127,.16); --green-soft:rgba(95,191,127,.09); --green-text:#8fd3a6; --green-line:rgba(95,191,127,.3);
+  --red:#ef6b6b; --red-dim:rgba(239,107,107,.14); --red-soft:rgba(239,107,107,.08); --red-text:#f4a0a0; --red-line:rgba(239,107,107,.3);
+  --amber:#e6a441; --amber-dim:rgba(230,164,65,.14); --amber-soft:rgba(230,164,65,.08); --amber-text:#f0c479; --amber-line:rgba(230,164,65,.3);
+  --blue:#6ca6dd; --blue-dim:rgba(108,166,221,.14); --blue-soft:rgba(108,166,221,.08); --blue-text:#9cc4e8; --blue-line:rgba(108,166,221,.3);
+  /* type */
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  /* motion */
+  --ease:cubic-bezier(.2,0,0,1);
+  --t-fast:120ms; --t-med:180ms; --t-slow:240ms;
+  /* elevation */
+  --shadow-1:0 1px 2px rgba(0,0,0,.3);
+  --shadow-2:0 6px 24px rgba(0,0,0,.4),0 2px 6px rgba(0,0,0,.3);
+  --radius:8px; --radius-sm:6px; --radius-lg:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13.5px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button,input{font:inherit;color:inherit}
+a{color:inherit}
+.mono{font-family:var(--mono)}
+.tnum{font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px}
+::selection{background:var(--accent-dim);color:var(--accent-strong)}
+
+/* custom scrollbars — quiet, warm */
+*{scrollbar-width:thin;scrollbar-color:var(--raised) transparent}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:var(--raised);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:var(--raised-2)}
+
+kbd{font-family:var(--mono);font-size:11px;line-height:1;color:var(--text-2);
+  background:var(--raised);border:1px solid var(--border-2);border-bottom-width:2px;
+  border-radius:5px;padding:2px 6px;display:inline-block;min-width:16px;text-align:center}
+
+/* ── Header ─────────────────────────────────────────────── */
+#header {
+  height:52px;display:flex;align-items:center;padding:0 18px;gap:14px;
+  border-bottom:1px solid var(--border);background:var(--panel);
+  flex:none;position:relative;z-index:30;
+}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:13.5px;white-space:nowrap}
+.logo{width:26px;height:26px;border-radius:7px;
+  background:linear-gradient(150deg,var(--raised),var(--card));
+  border:1px solid var(--border-2);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  display:grid;place-items:center;color:var(--accent);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.02em}
+.brand-div{color:var(--faint);font-weight:300}
+.brand-sub{color:var(--text-2);font-weight:500}
+.header-spacer{margin-left:auto}
+.zdr-badge{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;font-weight:500;
+  padding:5px 11px;border-radius:999px;color:var(--green-text);border:1px solid var(--green-line);background:var(--green-soft)}
+.zdr-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+
+/* ── Layout ──────────────────────────────────────────────── */
+#app{display:flex;flex:1;min-height:0;overflow:hidden}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar{
+  width:352px;flex:none;border-right:1px solid var(--border);
+  display:flex;flex-direction:column;background:var(--panel);overflow:hidden;
+}
+#sidebar-head{padding:14px 16px 12px;flex:none;border-bottom:1px solid var(--border)}
+#sidebar-head-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+#sidebar-title{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600}
+#sidebar-title b{color:var(--text-2);font-weight:700}
+#refresh-btn{width:28px;height:28px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--card);color:var(--text-2);cursor:pointer;display:grid;place-items:center;
+  transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+#refresh-btn:hover{border-color:var(--border-strong);color:var(--text);background:var(--raised)}
+#refresh-btn:active{transform:translateY(1px)}
+#refresh-btn.spin svg{animation:spin .6s var(--ease)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.search-wrap{position:relative}
+.search-wrap>svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;width:13px;height:13px}
+#search{width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text);font-size:13px;padding:8px 30px 8px 31px;
+  transition:border-color var(--t-med) var(--ease),background var(--t-med) var(--ease),box-shadow var(--t-med) var(--ease)}
+#search::placeholder{color:var(--muted)}
+#search:focus{outline:none;border-color:var(--accent-line);background:var(--bg);box-shadow:0 0 0 3px var(--accent-soft)}
+.search-kbd{position:absolute;right:9px;top:50%;transform:translateY(-50%);
+  font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--raised);
+  border:1px solid var(--border-2);border-radius:4px;padding:2px 6px;pointer-events:none}
+.search-hint{font-size:10.5px;color:var(--faint);margin-top:6px;font-family:var(--mono);letter-spacing:.01em}
+.search-hint b{color:var(--muted);font-weight:600}
+
+#incident-list{flex:1;overflow-y:auto;padding-bottom:8px}
+
+.tier-label{font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.09em;
+  padding:14px 16px 5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:7px;
+  position:sticky;top:0;background:var(--panel);z-index:2}
+.tier-label .n{color:var(--faint);margin-left:auto;font-weight:600}
+.tier-dot{width:6px;height:6px;border-radius:50%;flex:none}
+.tier-critical .tier-dot{background:var(--red)}
+.tier-high .tier-dot,.tier-warning .tier-dot{background:var(--amber)}
+.tier-info .tier-dot{background:var(--blue)}
+
+.inc-card{
+  padding:9px 15px 9px 13px;border-bottom:1px solid var(--border);cursor:pointer;
+  display:grid;gap:3px;border-left:2px solid transparent;position:relative;
+  transition:background var(--t-fast) var(--ease),border-left-color var(--t-fast) var(--ease);
+  animation:fadeUp var(--t-slow) var(--ease) both;
+}
+.inc-card:hover{background:var(--card);border-left-color:var(--border-strong)}
+.inc-card.sel{background:var(--raised);border-left-color:var(--accent)}
+.inc-card.sel .card-svc{color:var(--accent-strong)}
+.inc-card:focus-visible{outline-offset:-2px}
+.inc-card.hidden{display:none}
+.card-row1{display:flex;align-items:center;gap:8px;min-width:0}
+.sev-dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(0,0,0,.25)}
+.sev-critical{background:var(--red)} .sev-warning{background:var(--amber)} .sev-high{background:var(--amber)} .sev-info{background:var(--blue)}
+.card-svc{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.card-badges{display:flex;align-items:center;gap:5px;flex:none}
+.cached-tick{color:var(--accent);display:inline-flex;align-items:center}
+.plat-tag{font-family:var(--mono);font-size:9px;padding:2px 5px;border-radius:4px;font-weight:700;letter-spacing:.04em}
+.plat-tag.live-tag{background:var(--green-dim);color:var(--green-text)}
+.plat-tag.sim-tag{background:var(--card);border:1px solid var(--border-2);color:var(--muted)}
+.card-alertname{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-summary{font-size:12px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;line-height:1.45}
+.card-age{font-size:10.5px;color:var(--faint);font-family:var(--mono);white-space:nowrap;flex:none}
+
+.list-empty{padding:28px 18px;color:var(--muted);font-size:13px;text-align:center;line-height:1.6}
+.list-empty svg{opacity:.5;margin-bottom:8px}
+.skel-card{padding:12px 15px;border-bottom:1px solid var(--border)}
+.skel{height:10px;border-radius:5px;
+  background:linear-gradient(90deg,var(--card) 25%,var(--raised) 50%,var(--card) 75%);
+  background-size:200% 100%;animation:shimmer 1.5s var(--ease) infinite;margin-bottom:8px}
+.skel.w40{width:40%} .skel.w55{width:55%} .skel.w70{width:70%} .skel.w85{width:85%}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes breathe{0%,100%{opacity:.6}50%{opacity:1}}
+
+/* ── Session history section ─────────────────────────────── */
+#history-section{flex:none;border-top:1px solid var(--border);background:var(--panel)}
+#history-toggle{width:100%;display:flex;align-items:center;gap:8px;padding:10px 16px;
+  background:none;border:none;cursor:pointer;color:var(--text-2);font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.08em;transition:color var(--t-fast) var(--ease)}
+#history-toggle:hover{color:var(--text)}
+#history-toggle .chev{margin-left:auto;transition:transform var(--t-med) var(--ease);color:var(--muted)}
+#history-toggle.open .chev{transform:rotate(180deg)}
+#history-toggle .clock{color:var(--accent)}
+#history-toggle .hcount{color:var(--muted);font-family:var(--mono);font-weight:700}
+#history-list{max-height:0;overflow:hidden;overflow-y:auto;transition:max-height var(--t-slow) var(--ease)}
+#history-list.open{max-height:220px}
+.hist-item{display:flex;align-items:center;gap:9px;padding:8px 16px;cursor:pointer;
+  border-top:1px solid var(--border);transition:background var(--t-fast) var(--ease);animation:fadeUp var(--t-med) var(--ease) both}
+.hist-item:hover{background:var(--card)}
+.hist-sev{width:6px;height:6px;border-radius:50%;flex:none}
+.hist-body{min-width:0;flex:1}
+.hist-svc{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-meta{font-size:10.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-age{font-size:10px;color:var(--faint);font-family:var(--mono);flex:none;white-space:nowrap}
+.hist-empty{padding:12px 16px;color:var(--faint);font-size:12px;border-top:1px solid var(--border)}
+
+/* ── Right panel ──────────────────────────────────────────── */
+#panel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);min-width:0}
+#panel-head{padding:18px 30px 16px;border-bottom:1px solid var(--border);flex:none;background:var(--panel)}
+#panel-body{flex:1;overflow-y:auto;padding:24px 30px 40px;min-height:0}
+
+/* ── Empty / setup state ─────────────────────────────────── */
+.empty-state{display:grid;place-items:center;height:100%;min-height:300px;text-align:center;padding:32px;
+  animation:fadeUp var(--t-slow) var(--ease)}
+.empty-icon{color:var(--faint);margin-bottom:16px;animation:floaty 5s ease-in-out infinite}
+.empty-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:7px;animation:breathe 6s ease-in-out infinite}
+.empty-desc{font-size:13px;color:var(--text-2);max-width:400px;line-height:1.65;margin-bottom:20px}
+.empty-desc kbd{margin:0 1px}
+
+.setup-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:600px;width:100%;text-align:left}
+.setup-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.setup-card h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);margin-bottom:10px}
+.setup-card p{font-size:12px;color:var(--text-2);margin-bottom:11px;line-height:1.55}
+.env-vars{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:11px}
+.env-var{font-family:var(--mono);font-size:11px;color:var(--accent-strong);display:block;line-height:1.75}
+.copy-btn{font-family:var(--mono);font-size:11px;color:var(--text-2);background:var(--card);
+  border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:5px 11px;cursor:pointer;
+  transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.copy-btn:hover{border-color:var(--border-strong);color:var(--text);background:var(--raised)}
+.sim-note{font-size:12px;color:var(--muted);margin-top:6px;text-align:center;grid-column:1/-1}
+
+/* ── Panel header ────────────────────────────────────────── */
+.ph-title{font-size:22px;font-weight:600;letter-spacing:-.015em;margin-bottom:7px;line-height:1.15}
+.ph-meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center;color:var(--text-2);font-family:var(--mono);font-size:12px}
+.ph-meta .sev{font-weight:700;text-transform:uppercase;letter-spacing:.03em;font-size:11px}
+.ph-sep{color:var(--faint)}
+.ph-live{color:var(--green-text);display:inline-flex;align-items:center;gap:5px}
+.ph-live .dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:livePulse 2.4s ease-in-out infinite}
+@keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(95,191,127,.5)}50%{box-shadow:0 0 0 4px rgba(95,191,127,0)}}
+.ph-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center}
+.ph-hint{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+
+/* cached banner (panel header) */
+.cached-banner{display:flex;align-items:center;gap:10px;margin-top:14px;padding:9px 13px;
+  background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:var(--radius-sm);
+  font-size:12.5px;color:var(--accent-strong);animation:fadeUp var(--t-med) var(--ease)}
+.cached-banner svg{flex:none;color:var(--accent)}
+.cached-banner .cb-txt{color:var(--text-2)}
+.cached-banner .cb-age{font-family:var(--mono);color:var(--accent-strong);font-weight:600}
+.cached-banner .cb-spacer{margin-left:auto}
+
+/* ── Buttons ────────────────────────────────────────────── */
+.btn{font-family:var(--sans);font-size:13px;font-weight:600;border-radius:var(--radius-sm);
+  border:1px solid var(--border-2);background:var(--card);color:var(--text);
+  padding:8px 15px;cursor:pointer;
+  transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),transform var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease);
+  display:inline-flex;align-items:center;gap:7px;min-height:36px;white-space:nowrap}
+.btn:hover{background:var(--raised);border-color:var(--border-strong)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;background:var(--card)}
+.btn.primary{background:linear-gradient(180deg,var(--accent-strong),var(--accent));color:var(--accent-ink);
+  border-color:transparent;box-shadow:var(--shadow-1),inset 0 1px 0 rgba(255,255,255,.15)}
+.btn.primary:hover{background:linear-gradient(180deg,#f6cd8a,var(--accent-strong));border-color:transparent}
+.btn.primary:disabled{background:var(--card);color:var(--text);box-shadow:none}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:var(--card);border-color:var(--border-2)}
+.btn.sm{min-height:30px;padding:5px 11px;font-size:12px}
+
+/* split dropdown for copy */
+.split{position:relative;display:inline-flex}
+.split-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:190px;z-index:40;
+  background:var(--card);border:1px solid var(--border-2);border-radius:var(--radius);
+  box-shadow:var(--shadow-2);padding:5px;display:none;animation:menuIn var(--t-med) var(--ease)}
+.split-menu.open{display:block}
+@keyframes menuIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.split-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  background:none;border:none;color:var(--text-2);font-size:12.5px;font-weight:500;
+  padding:7px 9px;border-radius:var(--radius-sm);cursor:pointer;
+  transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.split-menu button:hover{background:var(--raised);color:var(--text)}
+.split-menu button svg{color:var(--muted);flex:none}
+.split-menu button:hover svg{color:var(--accent)}
+.split-menu .kbdhint{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.split-menu hr{border:none;border-top:1px solid var(--border);margin:4px 2px}
+
+/* ── Stepper ────────────────────────────────────────────── */
+.stepper{display:flex;align-items:center;margin-bottom:22px}
+.step{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted)}
+.step-node{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border-2);
+  display:grid;place-items:center;font-size:11px;background:var(--card);flex:none;
+  transition:all var(--t-med) var(--ease)}
+.step.active .step-node{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);
+  box-shadow:0 0 0 4px var(--accent-dim)}
+.step.active{color:var(--text)}
+.step.done .step-node{background:var(--accent-dim);border-color:var(--accent-line);color:var(--accent-strong)}
+.step.done{color:var(--text-2)}
+.step.err .step-node{background:var(--red-dim);border-color:var(--red-line);color:var(--red)}
+.step.err{color:var(--red-text)}
+.step-line{width:30px;height:1.5px;background:var(--border-2);margin:0 6px;transition:background var(--t-slow) var(--ease)}
+.step-line.done{background:var(--accent-line)}
+
+/* ── Meta chips ─────────────────────────────────────────── */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;
+  padding:4px 9px;border-radius:6px;background:var(--card);border:1px solid var(--border);color:var(--text-2);
+  animation:fadeUp var(--t-med) var(--ease) both}
+.chip b,.chip strong{color:var(--text);font-weight:700}
+.chip.accent{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-strong);font-family:var(--sans);font-weight:600}
+.chip.warn{background:var(--amber-soft);border-color:var(--amber-line);color:var(--amber-text)}
+.chip.err{background:var(--red-soft);border-color:var(--red-line);color:var(--red-text)}
+
+/* ── Evidence zone ───────────────────────────────────────── */
+.zone{margin-bottom:22px;animation:fadeUp var(--t-slow) var(--ease)}
+.zone-header{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.zone-title{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700}
+.zone-tag{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;font-weight:600}
+.zone-tag.det{background:var(--green-soft);color:var(--green-text);border:1px solid var(--green-line)}
+.zone-tag.ai{background:var(--blue-soft);color:var(--blue-text);border:1px solid var(--blue-line)}
+.evidence-table{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--panel)}
+.ev-row{display:grid;grid-template-columns:16px minmax(150px,38%) 1fr;gap:11px;align-items:baseline;
+  padding:6px 14px;border-bottom:1px solid var(--border);transition:background var(--t-fast) var(--ease)}
+.ev-row:last-child{border-bottom:none}
+.ev-row:nth-child(even){background:rgba(0,0,0,.14)}
+.ev-row:hover{background:var(--card)}
+.ev-key{font-family:var(--mono);font-size:12px;color:var(--text-2);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ev-val{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+.prov-dot{font-size:10px;line-height:1}
+.prov-dot.conf-high{color:var(--green)} .prov-dot.conf-med{color:var(--amber)} .prov-dot.conf-low{color:var(--muted)}
+.prov-legend{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.ev-empty{padding:16px;color:var(--muted);font-size:13px}
+
+/* ── Analysis streaming card ─────────────────────────────── */
+.analysis-card{border:1px solid var(--border);border-left:2px solid var(--blue-line);border-radius:var(--radius);
+  background:var(--panel);padding:17px 20px;font-size:13.5px;line-height:1.7}
+.analysis-card h2{font-size:15px;font-weight:650;margin:18px 0 6px;letter-spacing:-.01em;color:var(--text)}
+.analysis-card h2:first-child{margin-top:0}
+.analysis-card h3{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:18px 0 8px;font-weight:700}
+.analysis-card p{margin:7px 0;color:var(--text-2)}
+.analysis-card ul{padding-left:20px;margin:7px 0}
+.analysis-card li{margin:5px 0;color:var(--text-2)}
+.analysis-card strong{color:var(--text);font-weight:650}
+.analysis-card hr{border:none;border-top:1px solid var(--border);margin:18px 0}
+.analysis-card em{color:var(--muted);font-style:normal;font-size:12px}
+.cursor{display:inline-block;width:2px;height:14px;background:var(--accent);vertical-align:-2px;
+  animation:blink 1.05s steps(2,jump-none) infinite;margin-left:2px;border-radius:2px}
+@keyframes blink{50%{opacity:0}}
+
+/* ── Priority banner ─────────────────────────────────────── */
+.priority-banner{border-radius:var(--radius);border:1px solid;padding:14px 16px;margin-bottom:20px;animation:fadeUp var(--t-slow) var(--ease)}
+.priority-banner.critical{background:var(--red-soft);border-color:var(--red-line)}
+.priority-banner.high{background:var(--amber-soft);border-color:var(--amber-line)}
+.priority-banner.medium{background:var(--blue-soft);border-color:var(--blue-line)}
+.priority-banner.low{background:var(--panel);border-color:var(--border-2)}
+.priority-label{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:7px}
+.priority-banner.critical .priority-label{color:var(--red-text)}
+.priority-banner.high .priority-label{color:var(--amber-text)}
+.priority-banner.medium .priority-label{color:var(--blue-text)}
+.priority-banner.low .priority-label{color:var(--muted)}
+.priority-context{font-size:12px;color:var(--text-2);font-family:var(--mono)}
+
+/* ── Structured triage result ────────────────────────────── */
+.triage-section{margin-bottom:18px}
+.triage-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;
+  color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:9px}
+.triage-section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.triage-text{font-size:13.5px;color:var(--text-2);line-height:1.7}
+.fix-steps{list-style:none;display:grid;gap:8px}
+.fix-step{display:flex;gap:11px;align-items:flex-start}
+.fix-num{width:22px;height:22px;border-radius:50%;background:var(--accent-soft);border:1px solid var(--accent-line);
+  font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent-strong);
+  display:grid;place-items:center;flex:none;margin-top:1px}
+.fix-text{font-size:13.5px;color:var(--text-2);line-height:1.6}
+.watch-list{list-style:none;display:grid;gap:6px}
+.watch-item{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;color:var(--text-2)}
+.watch-item::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none;margin-top:8px}
+
+/* ── Notice row ─────────────────────────────────────────── */
+.notice-row{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:var(--radius-sm);
+  background:var(--amber-soft);border:1px solid var(--amber-line);color:var(--amber-text);font-size:12.5px;margin-bottom:14px}
+.notice-row svg{flex:none;color:var(--amber)}
+
+/* ── Post-triage footer ──────────────────────────────────── */
+.post-triage{display:flex;gap:8px;align-items:center;padding-top:18px;border-top:1px solid var(--border);margin-top:20px;flex-wrap:wrap}
+.post-triage-fb{display:flex;gap:6px;margin-left:auto;align-items:center;font-size:12px;color:var(--muted)}
+
+/* ── Error ───────────────────────────────────────────────── */
+.err-box{text-align:center;padding:36px;color:var(--muted)}
+.err-icon{color:var(--red);margin-bottom:12px}
+.err-title{font-size:14px;font-weight:600;color:var(--red-text);margin-bottom:6px}
+.err-desc{font-size:13px;color:var(--text-2)}
+
+/* ── Status bar (footer) ─────────────────────────────────── */
+#statusbar{flex:none;height:30px;display:flex;align-items:center;gap:14px;padding:0 16px;
+  border-top:1px solid var(--border);background:var(--panel);font-size:11px;color:var(--muted);
+  font-family:var(--mono);overflow:hidden;white-space:nowrap;z-index:20}
+.sb-item{display:inline-flex;align-items:center;gap:6px;flex:none}
+.sb-item.dim{color:var(--faint)}
+.sb-item b{color:var(--text-2);font-weight:600}
+.sb-dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--faint)}
+.sb-dot.live{background:var(--green);box-shadow:0 0 0 2px var(--green-dim)}
+.sb-dot.warn{background:var(--amber)}
+.sb-sep{color:var(--faint);flex:none}
+.sb-spacer{margin-left:auto;flex:1 1 auto}
+.sb-zdr{color:var(--green-text)}
+.sb-latency b{font-variant-numeric:tabular-nums}
+.sb-plat.live{color:var(--green-text)}
+.sb-plat.warn{color:var(--amber-text)}
+.sb-plat.sim{color:var(--muted)}
+
+/* ── Toast ───────────────────────────────────────────────── */
+#toast{position:fixed;bottom:44px;left:50%;transform:translateX(-50%) translateY(8px);
+  background:var(--raised);border:1px solid var(--border-2);color:var(--text);
+  padding:10px 16px;border-radius:var(--radius);font-size:13px;opacity:0;pointer-events:none;
+  transition:opacity var(--t-med) var(--ease),transform var(--t-med) var(--ease);z-index:99;
+  display:flex;align-items:center;gap:9px;box-shadow:var(--shadow-2)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast svg{color:var(--accent);flex:none}
+
+/* ── Kbd overlay ─────────────────────────────────────────── */
+#kbd-overlay{position:fixed;inset:0;background:rgba(10,8,6,.7);backdrop-filter:blur(3px);
+  display:none;place-items:center;z-index:60;animation:fadeIn var(--t-med) var(--ease)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+#kbd-overlay.show{display:grid}
+.kbd-panel{background:var(--panel);border:1px solid var(--border-2);border-radius:var(--radius-lg);
+  padding:22px 24px;min-width:340px;max-width:440px;box-shadow:var(--shadow-2);
+  animation:menuIn var(--t-slow) var(--ease)}
+.kbd-panel h3{font-size:14px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.kbd-panel h3 svg{color:var(--accent)}
+.kbd-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+  font-size:13px;color:var(--text-2);border-bottom:1px solid var(--border)}
+.kbd-row:last-of-type{border:none}
+.kbd-row .keys{display:inline-flex;gap:4px;align-items:center;color:var(--muted)}
+.kbd-close{margin-top:16px;width:100%;justify-content:center}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+@media(max-width:900px){
+  #sidebar{width:290px}
+  #panel-body{padding:18px}
+  #panel-head{padding:16px 18px}
+  .setup-cards{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div id="full-layout" style="display:flex;flex-direction:column;height:100vh">
+
+<header id="header">
+  <div class="brand">
+    <div class="logo">CN</div>
+    <span>Control Network</span>
+    <span class="brand-div">/</span>
+    <span class="brand-sub">Triage Copilot</span>
+  </div>
+  <div class="header-spacer"></div>
+  <div class="zdr-badge">
+    <span class="dot"></span>
+    zero data retention
+  </div>
+</header>
+
+<div id="app">
+  <nav id="sidebar" aria-label="Incident queue">
+    <div id="sidebar-head">
+      <div id="sidebar-head-row">
+        <h2 id="sidebar-title">Incidents</h2>
+        <button id="refresh-btn" onclick="refreshList()" title="Refresh (r)" aria-label="Refresh incident list">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+      </div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search" type="text" placeholder="Filter service, alert…" autocomplete="off" spellcheck="false" aria-label="Filter incidents"/>
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-hint">Tip: <b>sev:critical</b> · <b>sev:high</b> · <b>sev:warning</b> — combine with text</div>
+    </div>
+    <div id="incident-list" role="list"></div>
+    <!-- Session triage history (in-RAM only; wiped on reload — ZDR). -->
+    <div id="history-section" style="display:none">
+      <button id="history-toggle" onclick="toggleHistory()" aria-expanded="false" aria-controls="history-list">
+        <svg class="clock" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span>This session · <span class="hcount" id="hist-count">0</span> <span id="hist-word">triages</span></span>
+        <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div id="history-list" role="list" aria-label="Session triage history"></div>
+    </div>
+  </nav>
+
+  <section id="panel" aria-label="Triage panel">
+    <div id="panel-head" style="display:none"></div>
+    <div id="panel-body">
+      <div id="panel-content">
+        <div class="empty-state" id="welcome-state">
+          <div>
+            <div class="empty-icon">
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M9 4v5"/>
+              </svg>
+            </div>
+            <div class="empty-title">Pick an incident to triage</div>
+            <div class="empty-desc">One click runs the whole triage — analysis streams in first, evidence lands beneath it. Navigate with <kbd>j</kbd>/<kbd>k</kbd>, press <kbd>?</kbd> for all shortcuts.</div>
+            <div id="setup-guide" style="display:none">
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Connect your platforms to pull live alerts</div>
+              <div class="setup-cards">
+                <div class="setup-card">
+                  <h4>Prometheus</h4>
+                  <p>Point at your Alertmanager endpoint to pull active alerts.</p>
+                  <div class="env-vars">
+                    <span class="env-var">CN_PROMETHEUS_URL=http://…:9093</span>
+                    <span class="env-var">CN_PROMETHEUS_TOKEN=&lt;token&gt;</span>
+                  </div>
+                  <button class="copy-btn" onclick="copyEnv('CN_PROMETHEUS_URL=http://alertmanager:9093\nCN_PROMETHEUS_TOKEN=')">Copy vars</button>
+                </div>
+                <div class="setup-card">
+                  <h4>Datadog</h4>
+                  <p>Pull triggered monitors using your API and application keys.</p>
+                  <div class="env-vars">
+                    <span class="env-var">CN_DATADOG_API_KEY=…</span>
+                    <span class="env-var">CN_DATADOG_APP_KEY=…</span>
+                    <span class="env-var">CN_DATADOG_SITE=datadoghq.com</span>
+                  </div>
+                  <button class="copy-btn" onclick="copyEnv('CN_DATADOG_API_KEY=\nCN_DATADOG_APP_KEY=\nCN_DATADOG_SITE=datadoghq.com')">Copy vars</button>
+                </div>
+                <div class="sim-note">Currently showing realistic simulation scenarios below.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Status bar: LLM provider · last-run latency · ZDR · platform pills -->
+<footer id="statusbar" aria-label="Status">
+  <span class="sb-item" id="sb-llm" title="Analysis engine"><span class="sb-dot" id="sb-llm-dot"></span><b id="sb-llm-name">—</b></span>
+  <span class="sb-sep">·</span>
+  <span class="sb-item sb-latency dim" id="sb-latency">no runs yet</span>
+  <span class="sb-spacer"></span>
+  <span class="sb-item" id="sb-platforms"></span>
+  <span class="sb-sep">·</span>
+  <span class="sb-item sb-zdr" title="No persistence — all state in memory, wiped on reload">zero data retention</span>
+</footer>
+
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="kbd-overlay" aria-modal="true" role="dialog" aria-label="Keyboard shortcuts">
+  <div class="kbd-panel">
+    <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>Keyboard shortcuts</h3>
+    <div class="kbd-row"><span>Navigate incidents</span><span class="keys"><kbd>j</kbd> <kbd>k</kbd></span></div>
+    <div class="kbd-row"><span>Run triage</span><span class="keys"><kbd>Enter</kbd></span></div>
+    <div class="kbd-row"><span>Re-run fresh (skip cache)</span><span class="keys"><kbd>R</kbd></span></div>
+    <div class="kbd-row"><span>Refresh list</span><span class="keys"><kbd>r</kbd></span></div>
+    <div class="kbd-row"><span>Copy as Markdown</span><span class="keys"><kbd>c</kbd></span></div>
+    <div class="kbd-row"><span>Copy for Slack</span><span class="keys"><kbd>C</kbd></span></div>
+    <div class="kbd-row"><span>Post to Slack</span><span class="keys"><kbd>s</kbd></span></div>
+    <div class="kbd-row"><span>Focus search</span><span class="keys"><kbd>/</kbd></span></div>
+    <div class="kbd-row"><span>Close / blur</span><span class="keys"><kbd>Esc</kbd></span></div>
+    <div class="kbd-row"><span>Toggle this panel</span><span class="keys"><kbd>?</kbd></span></div>
+    <button class="btn ghost kbd-close" onclick="toggleHelp(false)">Close</button>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Control Network — Triage Copilot UI
+   Single-file, zero external resources, ZERO persistent storage.
+   All state (incidents, session history, first-seen times) lives in JS memory
+   only and is wiped on reload — this is the ZDR brand promise, not an oversight.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// ── State (in-RAM only) ────────────────────────────────────
+let incidents = [], filtered = [], current = null, selIdx = -1;
+let lastReport = '', triageRunning = false, autoRefreshTimer = null;
+let activeStream = null, lastPlatforms = null, lastSource = 'sim';
+let llmProvider = null;                 // from /healthz, fetched once
+let showingCached = false;              // panel is showing a cached report
+
+// Session triage history: id -> {incident_id,title,service,severity,ts,report_markdown,llm,elapsed_ms}
+// Insertion-ordered Map so the strip shows most-recent-first without extra sorting.
+const historyMap = new Map();
+let historyOpen = false;
+
+// First-seen timestamps for incidents observed this session (RAM only).
+const firstSeen = new Map();
+
+// ── Icons ──────────────────────────────────────────────────
+const I = {
+  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M20 6 9 17l-5-5"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  play: `<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M8 5v14l11-7z"/></svg>`,
+  refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="13" height="13"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  slack: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M14 9V4a2 2 0 0 0-4 0v10a2 2 0 0 0 4 0V9Z"/><path d="M9 14H4a2 2 0 0 0 0 4h10a2 2 0 0 0 0-4H9Z"/><path d="M15 9h5a2 2 0 0 0 0-4H10a2 2 0 0 0 0 4h5Z"/><path d="M10 15v5a2 2 0 0 0 4 0V10a2 2 0 0 0-4 0v5Z"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><path d="m6 9 6 6 6-6"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  inbox: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
+};
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Relative-age formatter for RAM timestamps (Date.now() ms). Compact, human.
+function relAge(tsMs) {
+  const s = Math.max(0, Math.floor((Date.now() - tsMs) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's ago';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+// ── Boot ───────────────────────────────────────────────────
+async function boot() {
+  renderSkeleton();
+  fetchHealth();          // one-shot; populates the status-bar LLM provider
+  try {
+    const [platformsRes, incidentsRes] = await Promise.all([
+      fetch('/api/platforms', {cache:'no-store'}),
+      fetch('/api/incidents', {cache:'no-store'}),
+    ]);
+    const platforms = await platformsRes.json();
+    const data = await incidentsRes.json();
+    renderPlatformStatus(platforms);
+    loadIncidents(data);
+    if (!platforms.any_live) document.getElementById('setup-guide').style.display = 'block';
+    if (platforms.any_live) startAutoRefresh();
+  } catch(e) {
+    document.getElementById('incident-list').innerHTML =
+      `<div class="list-empty">${I.alert}<br>Backend not reachable — start the server first.</div>`;
+    renderStatusPlatforms(null, 'offline');
+  }
+}
+
+async function fetchHealth() {
+  try {
+    const r = await fetch('/healthz', {cache:'no-store'});
+    const h = await r.json();
+    llmProvider = h.llm || null;
+    renderStatusLlm();
+  } catch(_) { /* status bar just shows — */ }
+}
+
+// ── Status bar ─────────────────────────────────────────────
+function renderStatusLlm() {
+  const dot = document.getElementById('sb-llm-dot');
+  const name = document.getElementById('sb-llm-name');
+  if (!name) return;
+  const p = llmProvider || 'unknown';
+  const isDet = p === 'deterministic';
+  name.textContent = isDet ? 'deterministic' : p;
+  name.title = isDet ? 'No model reachable — deterministic templates' : 'Analysis engine: ' + p;
+  dot.className = 'sb-dot' + (isDet ? ' warn' : ' live');
+}
+
+function renderStatusPlatforms(p, forced) {
+  const el = document.getElementById('sb-platforms');
+  if (!el) return;
+  if (forced === 'offline') {
+    el.className = 'sb-item sb-plat warn';
+    el.innerHTML = `<span class="sb-dot warn"></span>server offline`;
+    return;
+  }
+  p = p || lastPlatforms;
+  if (!p) { el.innerHTML = ''; return; }
+  const names = [];
+  if (p.prometheus && p.prometheus.configured) names.push({n:'Prometheus', ok:p.prometheus.reachable});
+  if (p.datadog && p.datadog.configured) names.push({n:'Datadog', ok:p.datadog.reachable});
+  if (!names.length) {
+    el.className = 'sb-item sb-plat sim';
+    el.innerHTML = `<span class="sb-dot"></span>simulation data`;
+    return;
+  }
+  const allOk = names.every(x => x.ok !== false);
+  el.className = 'sb-item sb-plat ' + (allOk ? 'live' : 'warn');
+  const parts = names.map(x =>
+    `<span class="sb-dot ${x.ok !== false ? 'live' : 'warn'}"></span>${escapeHtml(x.n)}${x.ok === false ? ' (down)' : ''}`
+  );
+  el.innerHTML = parts.join('&nbsp;&nbsp;');
+}
+
+// Called from the `done` event: shows prep / first-token / total latency.
+function renderStatusLatency(d) {
+  const el = document.getElementById('sb-latency');
+  if (!el) return;
+  const ms = v => (v != null ? v : '—');
+  el.className = 'sb-item sb-latency';
+  el.innerHTML = `last run · facts <b>${ms(d.prep_ms)}ms</b> · first token <b>${ms(d.ttft_ms)}ms</b> · total <b>${ms(d.total_ms)}ms</b>`;
+}
+
+function renderPlatformStatus(p, source) {
+  lastPlatforms = p;
+  renderStatusPlatforms(p);
+}
+
+function loadIncidents(data) {
+  incidents = data.incidents || [];
+  lastSource = data.source || 'sim';
+  // Track first-seen time for every incident observed this session (RAM only).
+  const now = Date.now();
+  for (const inc of incidents) if (!firstSeen.has(inc.id)) firstSeen.set(inc.id, now);
+  const st = document.getElementById('sidebar-title');
+  if (st) st.innerHTML = `Incidents <b>${incidents.length}</b>`;
+  renderStatusPlatforms(lastPlatforms);
+  renderList();
+}
+
+function startAutoRefresh() {
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(async () => {
+    // Skip polling when it would be wasteful or disruptive: mid-triage (re-shuffling the
+    // list is jarring and the fetch competes with the SSE stream) or while the tab is
+    // hidden (nobody's looking; don't hammer Alertmanager/Datadog for nothing).
+    if (triageRunning || document.hidden) return;
+    try {
+      const r = await fetch('/api/incidents', {cache:'no-store'});
+      const data = await r.json();
+      const prevIds = new Set(incidents.map(i => i.id));
+      loadIncidents(data);
+      const newCount = (data.incidents || []).filter(i => !prevIds.has(i.id)).length;
+      if (newCount > 0) toast(`${newCount} new alert${newCount > 1 ? 's' : ''}`);
+    } catch(_) {}
+  }, 30000);
+}
+
+async function refreshList() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.classList.remove('spin'); void btn.offsetWidth; btn.classList.add('spin'); }
+  renderSkeleton();
+  try {
+    const r = await fetch('/api/incidents', {cache:'no-store'});
+    const data = await r.json();
+    loadIncidents(data);
+    toast('Refreshed');
+  } catch(_) { toast('Could not reach backend'); }
+}
+
+// ── Search parsing: `sev:critical` prefixes + free text ────
+function parseQuery(raw) {
+  const sevs = new Set();
+  const terms = [];
+  for (const tok of (raw || '').trim().toLowerCase().split(/\s+/)) {
+    if (!tok) continue;
+    const m = tok.match(/^sev:(.+)$/);
+    if (m) {
+      let v = m[1];
+      if (v === 'warn') v = 'warning';
+      if (v === 'crit') v = 'critical';
+      sevs.add(v);
+    } else terms.push(tok);
+  }
+  return { sevs, terms };
+}
+
+function matchesQuery(inc, q) {
+  if (q.sevs.size) {
+    const s = (inc.severity || 'info').toLowerCase();
+    if (!q.sevs.has(s)) return false;
+  }
+  if (!q.terms.length) return true;
+  const hay = `${inc.service||''} ${inc.alertname||''} ${inc.summary||''}`.toLowerCase();
+  return q.terms.every(t => hay.includes(t));
+}
+
+// ── Incident list rendering ────────────────────────────────
+function renderSkeleton() {
+  document.getElementById('incident-list').innerHTML = Array.from({length:6}).map(() => `
+    <div class="skel-card">
+      <div class="skel w55"></div>
+      <div class="skel w85"></div>
+      <div class="skel w70" style="margin-bottom:0"></div>
+    </div>`).join('');
+}
+
+function sevClass(s) {
+  const v = (s||'').toLowerCase();
+  if (v === 'critical') return 'sev-critical';
+  if (v === 'high') return 'sev-high';
+  if (v === 'warning' || v === 'warn') return 'sev-warning';
+  return 'sev-info';
+}
+function sevColor(s) {
+  const v = (s||'').toLowerCase();
+  return v==='critical'?'var(--red)':v==='high'||v==='warning'||v==='warn'?'var(--amber)':'var(--blue)';
+}
+
+function renderList() {
+  const q = parseQuery(document.getElementById('search').value);
+  filtered = incidents.filter(i => matchesQuery(i, q));
+
+  if (!filtered.length) {
+    document.getElementById('incident-list').innerHTML =
+      `<div class="list-empty">${I.inbox}<br>No incidents match your filter.</div>`;
+    return;
+  }
+
+  const tiers = {critical:[], high:[], warning:[], info:[]};
+  for (const inc of filtered) {
+    const s = (inc.severity||'info').toLowerCase();
+    if (s === 'critical') tiers.critical.push(inc);
+    else if (s === 'high') tiers.high.push(inc);
+    else if (s === 'warning' || s === 'warn') tiers.warning.push(inc);
+    else tiers.info.push(inc);
+  }
+
+  const section = (key, label, cls) => tiers[key].length
+    ? `<div class="tier-label ${cls}"><span class="tier-dot"></span>${label}<span class="n">${tiers[key].length}</span></div>`
+      + tiers[key].map(cardHtml).join('')
+    : '';
+
+  document.getElementById('incident-list').innerHTML =
+    section('critical','Critical','tier-critical') +
+    section('high','High','tier-high') +
+    section('warning','Warning','tier-warning') +
+    section('info','Info','tier-info');
+
+  document.querySelectorAll('.inc-card').forEach(card => {
+    card.addEventListener('click', () => selectById(card.dataset.id));
+    card.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') { e.preventDefault(); selectById(card.dataset.id); }});
+  });
+
+  if (current) applyHighlight();
+}
+
+function cardHtml(inc) {
+  const isLive = !!inc.live;
+  const cached = historyMap.has(inc.id);
+  // Age: prefer first-seen-this-session (RAM). Real live alerts may carry startsAt in raw,
+  // but /api/incidents doesn't surface it reliably, so we show honest session age only.
+  const seen = firstSeen.get(inc.id);
+  const ageHtml = seen ? `<span class="card-age" title="First seen this session">seen ${escapeHtml(relAge(seen))}</span>` : '';
+  const cachedTick = cached
+    ? `<span class="cached-tick" title="Cached triage available">${I.clock}</span>` : '';
+  return `<div class="inc-card" data-id="${escapeHtml(inc.id)}" role="button" tabindex="0" aria-label="${escapeHtml(inc.alertname)} — ${escapeHtml(inc.service)}">
+    <div class="card-row1">
+      <span class="sev-dot ${sevClass(inc.severity)}"></span>
+      <span class="card-svc">${escapeHtml(inc.service)}</span>
+      <span class="card-badges">
+        ${cachedTick}
+        ${isLive ? `<span class="plat-tag live-tag">LIVE</span>` : `<span class="plat-tag sim-tag">SIM</span>`}
+      </span>
+    </div>
+    <div class="card-alertname">${escapeHtml(inc.alertname)}</div>
+    <div class="card-row1">
+      <span class="card-summary">${escapeHtml(inc.summary||'')}</span>
+      ${ageHtml}
+    </div>
+  </div>`;
+}
+
+function applyHighlight() {
+  document.querySelectorAll('.inc-card').forEach(c => c.classList.remove('sel'));
+  if (!current) return;
+  const card = document.querySelector(`.inc-card[data-id="${CSS.escape(current.id)}"]`);
+  if (card) { card.classList.add('sel'); card.scrollIntoView({block:'nearest'}); }
+  selIdx = filtered.findIndex(i => i.id === current.id);
+}
+
+// Selecting an incident: if we have a cached report this session, show it instantly
+// (no re-fetch) with a clear cached/re-run affordance. Otherwise run triage.
+function selectById(id) {
+  current = incidents.find(i => i.id === id) || null;
+  selIdx = filtered.findIndex(i => i.id === id);
+  applyHighlight();
+  renderPanelHead();
+  if (current && historyMap.has(current.id)) {
+    showCachedReport(current.id);
+  } else {
+    renderPanelReady();
+    runTriage();
+  }
+}
+
+function selectByIndex(i) {
+  if (!filtered.length) return;
+  i = Math.max(0, Math.min(filtered.length - 1, i));
+  selectById(filtered[i].id);
+}
+
+// ── Panel head ─────────────────────────────────────────────
+function renderPanelHead(cachedTs) {
+  if (!current) return;
+  const head = document.getElementById('panel-head');
+  head.style.display = 'block';
+  const sev = (current.severity||'info').toLowerCase();
+  const cachedBanner = (cachedTs != null) ? `
+    <div class="cached-banner">
+      ${I.clock}
+      <span class="cb-txt">Showing <b class="cb-age">cached</b> triage from <span class="cb-age">${escapeHtml(relAge(cachedTs))}</span></span>
+      <span class="cb-spacer"></span>
+      <button class="btn primary sm" onclick="rerunFresh()">${I.refresh}Re-run fresh</button>
+    </div>` : '';
+  // Copy split-button: markdown default + Slack option; disabled until a report exists.
+  const dis = lastReport ? '' : 'disabled';
+  head.innerHTML = `
+    <div class="ph-title">${escapeHtml(current.service)}</div>
+    <div class="ph-meta">
+      <span class="sev" style="color:${sevColor(sev)}">${escapeHtml(current.severity)}</span>
+      <span class="ph-sep">·</span><span>${escapeHtml(current.alertname)}</span>
+      <span class="ph-sep">·</span><span>${escapeHtml(current.namespace||'—')}</span>
+      <span class="ph-sep">·</span><span>${escapeHtml(current.cluster||'—')}</span>
+      ${current.live ? `<span class="ph-sep">·</span><span class="ph-live"><span class="dot"></span>LIVE</span>` : ''}
+    </div>
+    <div class="ph-actions">
+      <button class="btn primary" id="run-btn" onclick="rerunFresh()" aria-label="Run triage">${I.play}<span id="run-label">Re-run fresh</span></button>
+      <div class="split">
+        <button class="btn ghost" id="copy-btn" onclick="copyReport('md')" ${dis} aria-label="Copy as Markdown">${I.copy}Copy</button>
+        <button class="btn ghost sm" id="copy-caret" onclick="toggleCopyMenu(event)" ${dis} aria-label="Copy format menu" title="More copy formats">${I.chevron}</button>
+        <div class="split-menu" id="copy-menu" role="menu">
+          <button onclick="copyReport('md')" role="menuitem">${I.copy}Copy as Markdown<span class="kbdhint">c</span></button>
+          <button onclick="copyReport('slack')" role="menuitem">${I.slack}Copy for Slack<span class="kbdhint">C</span></button>
+          <hr>
+          <button onclick="exportMd()" role="menuitem">${I.download}Export .md file</button>
+        </div>
+      </div>
+      <button class="btn ghost" id="slack-btn" onclick="postSlack()" ${dis} aria-label="Post to Slack">${I.slack}Slack</button>
+      <span class="ph-hint" id="run-hint">or press <kbd>Enter</kbd></span>
+    </div>
+    ${cachedBanner}`;
+}
+
+function renderPanelReady() {
+  showingCached = false;
+  document.getElementById('panel-content').innerHTML = `
+    <div id="stepper-wrap"></div>
+    <div class="chips" id="meta-chips"></div>
+    <div id="report-zone">
+      <div class="empty-state" style="min-height:220px">
+        <div>
+          <div class="empty-title">Ready to triage</div>
+          <div class="empty-desc">Press <strong>Run triage</strong> or hit <kbd>Enter</kbd>.</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Cached report display (instant, no re-fetch) ───────────
+function showCachedReport(id) {
+  // A cached view must never be overwritten by a still-running stream for another incident.
+  if (activeStream) { try { activeStream.close(); } catch (_) {} activeStream = null; }
+  triageRunning = false;
+  const h = historyMap.get(id);
+  if (!h) { renderPanelReady(); runTriage(); return; }
+  showingCached = true;
+  lastReport = h.report_markdown || '';
+  renderPanelHead(h.ts);
+  const ms = v => (v != null ? v : '—');
+  const chips = `
+    <span class="chip accent">${escapeHtml(h.title || 'Triage')}</span>
+    <span class="chip">cached <b>${escapeHtml(relAge(h.ts))}</b></span>
+    ${h.elapsed_ms != null ? `<span class="chip">total <b>${ms(h.elapsed_ms)}ms</b></span>` : ''}
+    <span class="chip">${escapeHtml(h.llm || '')}</span>`;
+  const parsed = parsePriorityReport(h.report_markdown || '');
+  const body = parsed.priority ? renderStructured(parsed, current) : renderMd(h.report_markdown || '');
+  document.getElementById('panel-content').innerHTML = `
+    <div class="chips">${chips}</div>
+    <div id="report-zone">
+      <div class="zone">
+        <div class="zone-header"><span class="zone-title">Analysis</span><span class="zone-tag ${h.llm==='deterministic'?'det':'ai'}">${h.llm==='deterministic'?'deterministic':'AI'}</span></div>
+        <div class="analysis-card">${body}</div>
+      </div>
+      ${postTriageHtml()}
+    </div>`;
+}
+
+// Explicit "run a fresh triage" — used by the primary button, cached "Re-run fresh",
+// and shift+R. Always bypasses the cache.
+function rerunFresh() {
+  if (!current) return;
+  renderPanelReady();
+  renderPanelHead();       // rebuild header without cached banner
+  runTriage();
+}
+
+// ── Triage stream ──────────────────────────────────────────
+const PHASES = [
+  {key:'DETECTED', label:'Detected'},
+  {key:'CORRELATING', label:'Correlating'},
+  {key:'ANALYZING', label:'Analyzing'},
+  {key:'DONE', label:'Done'},
+];
+
+function renderStepper(activeKey, errored) {
+  const ai = PHASES.findIndex(p => p.key === activeKey);
+  const steps = PHASES.map((p, i) => {
+    let cls = '';
+    if (errored && i === ai) cls = 'err';
+    else if (i < ai || (activeKey === 'DONE' && i === ai)) cls = 'done';
+    else if (i === ai) cls = 'active';
+    const inner = cls === 'done' ? I.check : cls === 'err' ? I.x : (i+1);
+    const line = i < PHASES.length - 1
+      ? `<div class="step-line${i < ai ? ' done' : ''}"></div>` : '';
+    return `<div class="step ${cls}"><div class="step-node">${inner}</div><span>${p.label}</span></div>${line}`;
+  }).join('');
+  return `<div class="stepper" role="list" aria-label="Triage phases">${steps}</div>`;
+}
+
+function runTriage() {
+  if (!current) return;
+  showingCached = false;
+  // Selecting a new incident mid-stream cancels the old run instead of blocking.
+  if (activeStream) { try { activeStream.close(); } catch(_) {} activeStream = null; }
+  triageRunning = true;
+  const snap = current;   // capture: `current` may change if the user navigates mid-stream
+
+  const runBtn = document.getElementById('run-btn');
+  const copyBtn = document.getElementById('copy-btn');
+  const caretBtn = document.getElementById('copy-caret');
+  const slackBtn = document.getElementById('slack-btn');
+  const runLabel = document.getElementById('run-label');
+  if (runBtn) runBtn.disabled = true;
+  if (runLabel) runLabel.textContent = 'Triaging…';
+  if (copyBtn) copyBtn.disabled = true;
+  if (caretBtn) caretBtn.disabled = true;
+  if (slackBtn) slackBtn.disabled = true;
+  closeCopyMenu();
+
+  const cw = document.getElementById('panel-content');
+  if (!document.getElementById('stepper-wrap')) renderPanelReady();
+  document.getElementById('stepper-wrap').innerHTML = renderStepper('DETECTED');
+  document.getElementById('meta-chips').innerHTML = '';
+  document.getElementById('report-zone').innerHTML = skeletonEvidence();
+
+  let narrative = '', done = false, factsTitle = '', llmVal = '';
+  // Streaming render coalesced to one paint per animation frame: without this, each token
+  // event re-parsed the ENTIRE accumulated markdown and reset innerHTML (O(n^2)). rafPending
+  // guards against scheduling more than one pending frame; final render happens on `done`.
+  let rafPending = false;
+  const flushNarrative = () => {
+    rafPending = false;
+    if (done) return;  // a frame scheduled just before `done` must not re-append the caret
+    const card = document.getElementById('ai-card');
+    if (card) card.innerHTML = renderMd(narrative) + '<span class="cursor"></span>';
+  };
+  const streamUrl = `/api/incidents/${encodeURIComponent(snap.id)}/stream`;
+  const es = new EventSource(streamUrl);
+  activeStream = es;
+
+  es.addEventListener('phase', e => {
+    const p = JSON.parse(e.data);
+    const sw = document.getElementById('stepper-wrap');
+    if (sw) sw.innerHTML = renderStepper(p.phase || p.value);
+  });
+
+  es.addEventListener('facts', e => {
+    const f = JSON.parse(e.data);
+    factsTitle = f.title || f.pattern || '';
+    const chips = document.getElementById('meta-chips');
+    let html = '';
+    if (factsTitle) html += `<span class="chip accent">${escapeHtml(factsTitle)}</span>`;
+    if (f.context_meta) {
+      html += `<span class="chip">tokens <b>${escapeHtml(String(f.context_meta.tokens_after || '—'))}</b></span>`;
+      if (f.context_meta.truncated) html += `<span class="chip warn">${I.alert} truncated</span>`;
+    }
+    if (chips) chips.innerHTML = html;
+    // Answer first: analysis on top, dense evidence table below it.
+    document.getElementById('report-zone').innerHTML = `
+      <div class="zone" id="ai-zone">
+        <div class="zone-header"><span class="zone-title">Analysis</span><span class="zone-tag ai" id="ai-tag">AI</span></div>
+        <div class="analysis-card" id="ai-card"><span class="cursor"></span></div>
+      </div>
+      <div class="zone">
+        <div class="zone-header"><span class="zone-title">Evidence</span><span class="zone-tag det">facts — code-rendered, not AI</span>
+          <span class="prov-legend">● direct&nbsp;&nbsp;◐ cached&nbsp;&nbsp;○ derived</span></div>
+        ${renderEvidence(f.facts)}
+      </div>`;
+  });
+
+  es.addEventListener('token', e => {
+    narrative += JSON.parse(e.data).t;
+    if (!rafPending) { rafPending = true; requestAnimationFrame(flushNarrative); }
+  });
+
+  es.addEventListener('notice', e => {
+    const n = JSON.parse(e.data);
+    const zone = document.getElementById('ai-zone');
+    if (zone && !zone.querySelector('.notice-row')) {
+      zone.insertAdjacentHTML('afterbegin',
+        `<div class="notice-row">${I.alert}<span>${escapeHtml(n.message || 'AI fell back to deterministic output.')}</span></div>`);
+    }
+    // Honest labeling: never call it AI when it isn't.
+    const tag = document.getElementById('ai-tag');
+    if (tag) { tag.textContent = 'deterministic'; tag.className = 'zone-tag det'; }
+    const chips = document.getElementById('meta-chips');
+    if (chips) chips.innerHTML += `<span class="chip warn">${I.alert} fallback</span>`;
+  });
+
+  es.addEventListener('done', e => {
+    done = true; triageRunning = false;
+    const d = JSON.parse(e.data);
+    lastReport = d.report_markdown || '';
+    llmVal = d.llm || '';
+    const aiTag = document.getElementById('ai-tag');
+    if (aiTag && d.llm === 'deterministic') { aiTag.textContent = 'deterministic'; aiTag.className = 'zone-tag det'; }
+    const card = document.getElementById('ai-card');
+    if (card) {
+      const parsed = parsePriorityReport(narrative || d.report_markdown || '');
+      card.innerHTML = parsed.priority
+        ? renderStructured(parsed, snap)
+        : renderMd(narrative || d.report_markdown || '');
+    }
+    const chips = document.getElementById('meta-chips');
+    const ms = v => (v != null ? v : '—');
+    if (chips) chips.innerHTML += `
+      <span class="chip">prep <b>${ms(d.prep_ms)}ms</b></span>
+      <span class="chip">first token <b>${ms(d.ttft_ms)}ms</b></span>
+      <span class="chip">total <b>${ms(d.total_ms)}ms</b></span>
+      <span class="chip">${escapeHtml(d.llm || '')}</span>`;
+    renderStatusLatency(d);
+    // Record into session history (RAM only) and refresh sidebar affordances.
+    saveHistory(snap, {title:factsTitle, report_markdown:lastReport, llm:llmVal, elapsed_ms:d.total_ms});
+    const zone = document.getElementById('report-zone');
+    if (zone) zone.insertAdjacentHTML('beforeend', postTriageHtml());
+    reEnableActions();
+    es.close();
+  });
+
+  es.addEventListener('error', e => {
+    if (done) return; done = true; triageRunning = false;
+    let msg = 'Triage failed on the server.';
+    try { if(e.data) msg = JSON.parse(e.data).error || msg; } catch(_) {}
+    const sw = document.getElementById('stepper-wrap');
+    if (sw) sw.innerHTML = renderStepper('ANALYZING', true);
+    document.getElementById('report-zone').innerHTML = `
+      <div class="err-box"><div class="err-icon">${I.alert}</div>
+        <div class="err-title">Triage failed</div>
+        <div class="err-desc">${escapeHtml(msg)}</div></div>`;
+    reEnableActions(true);
+    es.close();
+  });
+
+  es.onerror = () => {
+    if (done) return; done = true; triageRunning = false;
+    document.getElementById('report-zone').innerHTML = `
+      <div class="err-box"><div class="err-icon">${I.alert}</div>
+        <div class="err-title">Connection lost</div>
+        <div class="err-desc">Lost the stream to the server. Is the backend still running?</div></div>`;
+    reEnableActions(true);
+    es.close();
+  };
+}
+
+// Re-enable header actions after a run. `onlyRun` keeps copy/slack disabled (error path).
+function reEnableActions(onlyRun) {
+  const runBtn = document.getElementById('run-btn');
+  const runLabel = document.getElementById('run-label');
+  const copyBtn = document.getElementById('copy-btn');
+  const caretBtn = document.getElementById('copy-caret');
+  const slackBtn = document.getElementById('slack-btn');
+  if (runBtn) runBtn.disabled = false;
+  if (runLabel) runLabel.textContent = 'Re-run fresh';
+  if (!onlyRun) {
+    if (copyBtn) copyBtn.disabled = false;
+    if (caretBtn) caretBtn.disabled = false;
+    if (slackBtn) slackBtn.disabled = false;
+  }
+}
+
+// ── Session history (RAM only) ─────────────────────────────
+function saveHistory(inc, extra) {
+  if (!inc) return;
+  // Re-insert at front: delete then set keeps the Map ordered most-recent-first.
+  historyMap.delete(inc.id);
+  historyMap.set(inc.id, {
+    incident_id: inc.id,
+    title: extra.title || inc.alertname || '',
+    service: inc.service || '',
+    severity: inc.severity || 'info',
+    ts: Date.now(),
+    report_markdown: extra.report_markdown || '',
+    llm: extra.llm || '',
+    elapsed_ms: extra.elapsed_ms,
+  });
+  renderHistory();
+  renderList();   // refresh cached-tick affordance on cards
+}
+
+function renderHistory() {
+  const section = document.getElementById('history-section');
+  const list = document.getElementById('history-list');
+  const count = document.getElementById('hist-count');
+  const n = historyMap.size;
+  count.textContent = n;
+  const word = document.getElementById('hist-word');
+  if (word) word.textContent = n === 1 ? 'triage' : 'triages';
+  section.style.display = n ? 'block' : 'none';
+  const entries = Array.from(historyMap.values());   // already most-recent-first
+  list.innerHTML = entries.map(h => `
+    <div class="hist-item" role="listitem" tabindex="0" data-id="${escapeHtml(h.incident_id)}"
+         aria-label="Cached triage for ${escapeHtml(h.service)}, ${escapeHtml(relAge(h.ts))}">
+      <span class="hist-sev" style="background:${sevColor(h.severity)}"></span>
+      <span class="hist-body">
+        <span class="hist-svc">${escapeHtml(h.service)}</span>
+        <span class="hist-meta">${escapeHtml(h.title || h.incident_id)}</span>
+      </span>
+      <span class="hist-age">${escapeHtml(relAge(h.ts))}</span>
+    </div>`).join('') ||
+    `<div class="hist-empty">No triages yet this session.</div>`;
+  list.querySelectorAll('.hist-item').forEach(el => {
+    el.addEventListener('click', () => openHistory(el.dataset.id));
+    el.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openHistory(el.dataset.id); }});
+  });
+}
+
+// Click a history entry: select that incident and show its cached report instantly.
+function openHistory(id) {
+  const inc = incidents.find(i => i.id === id);
+  if (inc) {
+    current = inc;
+    selIdx = filtered.findIndex(i => i.id === id);
+    applyHighlight();
+  } else {
+    // Incident no longer in the live list (rotated out): synthesize a minimal `current`
+    // from the cached entry so the header + cached report still render honestly.
+    const h = historyMap.get(id);
+    if (!h) return;
+    current = {id:h.incident_id, service:h.service, alertname:h.title, severity:h.severity, namespace:'—', cluster:'—'};
+    selIdx = -1;
+  }
+  showCachedReport(id);
+}
+
+function toggleHistory() {
+  historyOpen = !historyOpen;
+  document.getElementById('history-toggle').classList.toggle('open', historyOpen);
+  document.getElementById('history-toggle').setAttribute('aria-expanded', String(historyOpen));
+  document.getElementById('history-list').classList.toggle('open', historyOpen);
+}
+
+// ── Evidence rendering ─────────────────────────────────────
+function renderEvidence(facts) {
+  if (!facts || !facts.length)
+    return `<div class="evidence-table"><div class="ev-empty">No structured facts collected.</div></div>`;
+  const rows = facts.map(f => {
+    const conf = provToConf(f.provenance);
+    return `<div class="ev-row" title="provenance: ${escapeHtml(f.provenance||'unknown')}">
+      <span class="prov-dot ${conf.cls}">${conf.dot}</span>
+      <span class="ev-key">${escapeHtml(f.key)}</span>
+      <span class="ev-val">${escapeHtml(String(f.value))}</span>
+    </div>`;
+  }).join('');
+  return `<div class="evidence-table">${rows}</div>`;
+}
+
+function provToConf(p) {
+  const v = (p||'').toLowerCase();
+  if (v==='high') return {cls:'conf-high',label:'High',dot:'●'};
+  if (v==='medium'||v==='med') return {cls:'conf-med',label:'Medium',dot:'◐'};
+  return {cls:'conf-low',label:'Low',dot:'○'};
+}
+
+function skeletonEvidence() {
+  return `<div class="zone">
+    <div class="zone-header"><span class="zone-title">Analysis</span></div>
+    <div class="analysis-card" style="min-height:70px">
+      <div class="skel w85"></div><div class="skel w70"></div><div class="skel w55" style="margin-bottom:0"></div>
+    </div>
+  </div>`;
+}
+
+// ── Structured triage result parser ───────────────────────
+function parsePriorityReport(text) {
+  const s = {};
+  const pm = text.match(/\*\*PRIORITY:\s*(CRITICAL|HIGH|MEDIUM|LOW)\*\*/i);
+  s.priority = pm ? pm[1].toUpperCase() : null;
+  const extract = h => {
+    const re = new RegExp(`\\*\\*${h}\\*\\*\\s*([\\s\\S]*?)(?=\\n\\*\\*[A-Z]|\\n---|$)`, 'i');
+    const m = text.match(re);
+    return m ? m[1].trim() : null;
+  };
+  s.whatHappened = extract('WHAT HAPPENED');
+  s.rootCause    = extract('ROOT CAUSE');
+  s.fixNow       = extract('FIX NOW[^*]*');
+  s.watchFor     = extract('WATCH FOR');
+  return s;
+}
+
+function renderStructured(s, inc) {
+  const bannerCls = s.priority === 'CRITICAL' ? 'critical'
+    : s.priority === 'HIGH' ? 'high'
+    : s.priority === 'MEDIUM' ? 'medium' : 'low';
+  const label = s.priority === 'CRITICAL' ? `${I.alert} CRITICAL — ACT NOW`
+    : s.priority === 'HIGH' ? 'HIGH PRIORITY'
+    : s.priority === 'MEDIUM' ? 'MEDIUM PRIORITY'
+    : 'LOW PRIORITY';
+
+  let html = `<div class="priority-banner ${bannerCls}">
+    <div class="priority-label">${label}</div>
+    <div class="priority-context">${escapeHtml(inc ? inc.service : '')} · ${escapeHtml(inc ? inc.cluster||'unknown' : '')}</div>
+  </div>`;
+
+  if (s.whatHappened) {
+    html += `<div class="triage-section">
+      <div class="triage-section-title">What happened</div>
+      <div class="triage-text">${escapeHtml(s.whatHappened)}</div>
+    </div>`;
+  }
+  if (s.rootCause) {
+    html += `<div class="triage-section">
+      <div class="triage-section-title">Root cause</div>
+      <div class="triage-text">${escapeHtml(s.rootCause)}</div>
+    </div>`;
+  }
+  if (s.fixNow) {
+    const steps = s.fixNow.split('\n').filter(l => /^\d+\./.test(l.trim()));
+    html += `<div class="triage-section">
+      <div class="triage-section-title">Fix now — steps in order</div>
+      <ul class="fix-steps">${steps.map((step, i) => {
+        const text = step.replace(/^\d+\.\s*/, '');
+        return `<li class="fix-step"><span class="fix-num">${i+1}</span><span class="fix-text">${escapeHtml(text)}</span></li>`;
+      }).join('')}</ul>
+    </div>`;
+  }
+  if (s.watchFor) {
+    const items = s.watchFor.split('\n').filter(l => l.trim().startsWith('-'));
+    html += `<div class="triage-section">
+      <div class="triage-section-title">Watch for</div>
+      <ul class="watch-list">${items.map(item => {
+        const text = item.replace(/^-\s*/, '');
+        return `<li class="watch-item">${escapeHtml(text)}</li>`;
+      }).join('')}</ul>
+    </div>`;
+  }
+  return html;
+}
+
+// ── Markdown renderer (fallback for unstructured) ──────────
+function renderMd(t) {
+  const esc = x => (x||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline = s => esc(s)
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>');
+  const lines = t.split('\n'); let out = [], ul = false;
+  for (const ln of lines) {
+    if (/^- /.test(ln)) { if(!ul){out.push('<ul>');ul=true;} out.push('<li>'+inline(ln.slice(2))+'</li>'); continue; }
+    if (ul) { out.push('</ul>'); ul=false; }
+    if (/^### /.test(ln)) out.push('<h3>'+inline(ln.slice(4))+'</h3>');
+    else if (/^## /.test(ln)) out.push('<h2>'+inline(ln.slice(3))+'</h2>');
+    else if (/^---/.test(ln)) out.push('<hr/>');
+    else if (/^\d+\. /.test(ln)) out.push('<p style="padding-left:8px">'+inline(ln)+'</p>');
+    else if (ln.trim()==='') out.push('');
+    else out.push('<p>'+inline(ln)+'</p>');
+  }
+  if (ul) out.push('</ul>');
+  return out.join('\n');
+}
+
+// Markdown -> Slack mrkdwn, mirroring the server's _md_to_slack_text in app/main.py:
+//   **bold** -> *bold*  ·  leading #.. header -> *header*  (lists/code kept as-is).
+function mdToSlack(md) {
+  return (md || '')
+    .replace(/\*\*(.+?)\*\*/g, '*$1*')
+    .replace(/^#{1,6}\s*(.+)$/gm, '*$1*');
+}
+
+// ── Post-triage actions ────────────────────────────────────
+function postTriageHtml() {
+  return `<div class="post-triage">
+    <button class="btn ghost sm" onclick="copyReport('md')">${I.copy}Copy Markdown</button>
+    <button class="btn ghost sm" onclick="copyReport('slack')">${I.slack}Copy for Slack</button>
+    <button class="btn ghost sm" onclick="exportMd()">${I.download}Export .md</button>
+    <span class="ph-hint" style="margin-left:6px"><kbd>c</kbd> md · <kbd>C</kbd> slack · <kbd>s</kbd> post · <kbd>j</kbd> next</span>
+    <div class="post-triage-fb">Was this useful?
+      <button class="btn ghost sm" onclick="sendFb('up')">${I.check}Yes</button>
+      <button class="btn ghost sm" onclick="sendFb('down')">${I.x}No</button>
+    </div>
+  </div>`;
+}
+
+async function copyReport(fmt) {
+  if (!lastReport) { toast('No report yet — run triage first'); return; }
+  closeCopyMenu();
+  const slack = fmt === 'slack';
+  const text = slack ? mdToSlack(lastReport) : lastReport;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(slack ? 'Copied for Slack' : 'Copied as Markdown');
+  } catch(_) { toast('Copy failed — check clipboard permissions'); }
+}
+
+// User-initiated download of the current report. Blob URL; nothing persists in-app.
+function exportMd() {
+  if (!lastReport) { toast('No report yet — run triage first'); return; }
+  closeCopyMenu();
+  const id = (current && current.id) ? current.id : 'incident';
+  const safe = id.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const blob = new Blob([lastReport], {type:'text/markdown;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${safe}-report.md`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Exported ${safe}-report.md`);
+}
+
+function toggleCopyMenu(e) {
+  if (e) e.stopPropagation();
+  const m = document.getElementById('copy-menu');
+  if (m) m.classList.toggle('open');
+}
+function closeCopyMenu() {
+  const m = document.getElementById('copy-menu');
+  if (m) m.classList.remove('open');
+}
+
+async function postSlack() {
+  if (!current) { toast('Select an incident first'); return; }
+  if (!lastReport) { toast('Run triage first'); return; }
+  try {
+    const r = await fetch('/api/slack', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({incident_id:current.id, scenario_id:current.id})});
+    const d = await r.json();
+    if (d.configured === false) {
+      await navigator.clipboard.writeText(mdToSlack(lastReport)).catch(()=>{});
+      toast('Slack not configured — copied for Slack instead');
+    } else if (d.ok) {
+      toast('Posted to Slack');
+    } else {
+      toast(`Slack post failed (${d.status||'unknown error'})`);
+    }
+  } catch(_) { toast('Could not reach backend'); }
+}
+
+async function sendFb(v) {
+  if (!current) return;
+  try {
+    await fetch('/api/feedback', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({incident_id:current.id, pattern:current.alertname||'', vote:v})});
+    toast(v==='up' ? 'Thanks, logged.' : 'Noted — we\'ll tune this pattern.');
+  } catch(_) { toast('Could not reach backend'); }
+}
+
+function copyEnv(text) {
+  navigator.clipboard.writeText(text)
+    .then(() => toast('Env vars copied'))
+    .catch(() => toast('Copy failed'));
+}
+
+// ── Toast ──────────────────────────────────────────────────
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.innerHTML = I.check + `<span>${escapeHtml(msg)}</span>`;
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────
+function toggleHelp(force) {
+  const o = document.getElementById('kbd-overlay');
+  const show = force !== undefined ? force : !o.classList.contains('show');
+  o.classList.toggle('show', show);
+}
+
+document.getElementById('search').addEventListener('input', renderList);
+
+document.addEventListener('keydown', ev => {
+  const tgt = ev.target;
+  const inField = tgt && (tgt.tagName==='INPUT'||tgt.tagName==='TEXTAREA');
+
+  if (ev.key === 'Escape') {
+    if (inField) tgt.blur();
+    closeCopyMenu();
+    toggleHelp(false);
+    return;
+  }
+  // '/' focuses search, but only as a global shortcut -- if the user is already typing in a
+  // field (e.g. typing a literal '/' into the search box itself), let the character through.
+  if (ev.key === '/' && !inField) { ev.preventDefault(); document.getElementById('search').focus(); return; }
+  if (inField) return;
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;   // don't hijack browser shortcuts
+
+  if (ev.key === '?') { ev.preventDefault(); toggleHelp(); return; }
+  if (ev.key === 'j' || ev.key === 'ArrowDown') { ev.preventDefault(); selectByIndex(selIdx < 0 ? 0 : selIdx + 1); return; }
+  if (ev.key === 'k' || ev.key === 'ArrowUp')   { ev.preventDefault(); selectByIndex(selIdx < 0 ? 0 : selIdx - 1); return; }
+  if (ev.key === 'Enter') {
+    if (current) { const b=document.getElementById('run-btn'); if(b&&!b.disabled) rerunFresh(); }
+    return;
+  }
+  // Shift-modified keys first (event.key is already case-correct: 'R', 'C').
+  if (ev.key === 'R') { ev.preventDefault(); if (current) rerunFresh(); return; }
+  if (ev.key === 'C') { const b=document.getElementById('copy-btn'); if(b&&!b.disabled) copyReport('slack'); return; }
+  if (ev.key === 'r') { ev.preventDefault(); refreshList(); return; }
+  if (ev.key === 'c') { const b=document.getElementById('copy-btn'); if(b&&!b.disabled) copyReport('md'); return; }
+  if (ev.key === 's') { const b=document.getElementById('slack-btn'); if(b&&!b.disabled) postSlack(); return; }
+});
+
+// Close the copy menu / kbd overlay on outside interaction.
+document.addEventListener('click', e => {
+  if (!e.target.closest('.split')) closeCopyMenu();
+});
+document.getElementById('kbd-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) toggleHelp(false);
+});
+
+// Keep relative ages ("seen 4m ago", history) honest without a full re-render storm.
+setInterval(() => {
+  if (document.hidden) return;
+  if (historyOpen) renderHistory();
+  document.querySelectorAll('.card-age').forEach(el => {
+    const card = el.closest('.inc-card'); if (!card) return;
+    const seen = firstSeen.get(card.dataset.id);
+    if (seen) el.textContent = 'seen ' + relAge(seen);
+  });
+}, 30000);
+
+boot();
+</script>
+</body>
+</html>

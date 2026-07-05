@@ -1,0 +1,23 @@
+# Pattern registry: alertname triggers -> ordered collectors.
+# Adding pattern #6 is config, not a code change (collector dispatch is config-driven).
+patterns:
+  OOMKill:
+    triggers: [KubePodOOMKilled, HighMemory, OOMKilling, ContainerOOMKilled]
+    collectors: [metrics, pod_describe, deployment, recent_changes]
+    title: "Out-Of-Memory Kill"
+  CrashLoopBackOff:
+    triggers: [KubePodCrashLooping, CrashLoopBackOff, PodRestartingTooMuch]
+    collectors: [pod_describe, logs, deployment, recent_changes]
+    title: "CrashLoopBackOff"
+  HighLatency:
+    triggers: [HighRequestLatency, SLOBurnRate, HighLatency, LatencyP99High]
+    collectors: [metrics, saturation, deployment, recent_changes]
+    title: "High Request Latency"
+  DiskPressure:
+    triggers: [NodeDiskPressure, PVCAlmostFull, KubePersistentVolumeFillingUp, DiskWillFillSoon]
+    collectors: [node_describe, disk, pvc]
+    title: "Disk Pressure"
+  ConfigError:
+    triggers: [KubeDeploymentRolloutStuck, CreateContainerConfigError, ConfigMapMissing, InvalidImage]
+    collectors: [pod_describe, events, deployment, recent_changes]
+    title: "Configuration Error"

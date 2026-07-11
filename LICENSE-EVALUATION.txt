@@ -1,0 +1,29 @@
+CONTROL NETWORK — TRIAGE COPILOT
+EVALUATION LICENSE
+
+Copyright (c) 2025-2026 Control Network. All rights reserved.
+
+This software is provided solely for EVALUATION purposes.
+
+1. Evaluation only. You may install and use this software only to evaluate
+   its suitability. No production or commercial use is permitted without a
+   separate written agreement with Control Network.
+
+2. No redistribution. You may not copy, share, sublicense, publish, or
+   otherwise distribute this software, its source code, or your access
+   credentials to any third party.
+
+3. Advisory output. All triage narratives and reports produced by this
+   software are advisory only. They are hypotheses, not facts, and are not a
+   substitute for human engineering judgment. You are responsible for any
+   action taken based on this software's output.
+
+4. No warranty. This software is provided "AS IS", without warranty of any
+   kind, express or implied, including but not limited to the warranties of
+   merchantability, fitness for a particular purpose, and non-infringement.
+   In no event shall Control Network be liable for any claim, damages, or
+   other liability arising from the use of this software.
+
+5. Evaluation term. This evaluation license is granted for 30 days from the
+   date of delivery, unless extended in writing by Control Network. Upon
+   expiry or on request, you must cease use and delete all copies.

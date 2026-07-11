@@ -11,6 +11,7 @@ __pycache__/
 .pytest_cache/
 
 # Local data / editor artifacts
+.claude/
 *.log
 .DS_Store
 skills/specialized.md

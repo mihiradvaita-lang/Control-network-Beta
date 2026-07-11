@@ -119,7 +119,7 @@ tester's GitHub username via Settings → Collaborators.
 
 ### Test Results
 
-Tests run from `C:\Users\Home\Desktop\CN-MVP` with no `CN_API_TOKEN` set (auth disabled),
+Tests run from the repo root with no `CN_API_TOKEN` set (auth disabled),
 `CN_DATA_MODE` defaulting to `sim`:
 
 ```

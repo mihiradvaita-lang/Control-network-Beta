@@ -1,0 +1,11 @@
+{
+  "name": "control-network",
+  "owner": { "name": "mihiradvaita-lang" },
+  "plugins": [
+    {
+      "name": "focus",
+      "source": "./focus-mod",
+      "description": "Focus mode for any task: a goal, a timer, a distraction parking lot, and a Claude that stays on-goal."
+    }
+  ]
+}

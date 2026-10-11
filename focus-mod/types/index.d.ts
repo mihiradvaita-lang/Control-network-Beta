@@ -4,6 +4,7 @@ export type FocusSession = {
   goal: string
   mode: string
   minutes: number
+  nextMinutes?: number
   breakMinutes: number
   phase: FocusPhase
   phaseEndsAt: number

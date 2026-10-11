@@ -48,12 +48,12 @@ async function history($: EngineInterface) {
   return ((await $.store.get('history')) as FocusRecord[] | undefined) ?? []
 }
 
-async function record($: EngineInterface, s: FocusSession, minutes: number) {
+async function record($: EngineInterface, s: FocusSession, minutes: number, at?: number) {
   if (minutes < 1) return
   const key = `${s.startedAt}:${s.round}`
   const list = await history($)
   if (list.some(r => r.key === key)) return
-  const entry: FocusRecord = { goal: s.goal, mode: s.mode, minutes, at: await $.clock.now(), key }
+  const entry: FocusRecord = { goal: s.goal, mode: s.mode, minutes, at: at ?? (await $.clock.now()), key }
   await $.store.set('history', [...list, entry].slice(-300))
 }
 
@@ -124,7 +124,9 @@ async function advance($: EngineInterface, now: number) {
     }
     seen.resumed = cur
 
-    return { ...cur, phase: 'focus', round: cur.round + 1, phaseEndsAt: now + cur.minutes * MINUTE }
+    const minutes = cur.nextMinutes ?? cur.minutes
+
+    return { ...cur, phase: 'focus', round: cur.round + 1, minutes, nextMinutes: undefined, phaseEndsAt: now + minutes * MINUTE }
   })
 
   const s = seen.ended ?? seen.resumed
@@ -173,7 +175,7 @@ async function restore($: EngineInterface) {
     return
   }
   const minutes = kept.phase !== 'focus' ? 0 : kept.pausedAt !== null ? partialMinutes(kept, now) : kept.minutes
-  await record($, kept, minutes)
+  await record($, kept, minutes, Math.min(now, kept.pausedAt ?? kept.phaseEndsAt))
   await $.store.set('active', null)
   const parked = kept.parked.length > 0 ? ` Parked: ${kept.parked.join('; ')}` : ''
   $.ui.toast(`Your focus session on "${kept.goal}" ended while you were away.${parked}`, { timeoutMs: 15_000 })
@@ -229,6 +231,19 @@ async function finish($: EngineInterface) {
   return { text, context: ['The focus session has ended; stop applying the focus-mode rules.'] }
 }
 
+async function checkIn($: EngineInterface) {
+  const s = await read($, session)
+  if (s === null) return
+  const text = CHECK_IN(s, focusedMinutes(s, await $.clock.now()))
+  // A prompt submitted inside a command.run hook would wait on that hook, so send it once the hook returns.
+  $.clock.after(0, () => void $.prompt.submit({ text }).catch(() => undefined))
+}
+
+async function pressDone($: EngineInterface) {
+  const { text } = await finish($)
+  $.ui.toast(text, { timeoutMs: 15_000 })
+}
+
 const CHECK_IN = (s: FocusSession, minutes: number) =>
   [
     `Focus check-in. My goal: "${s.goal}" (${modeOf(s).label} mode, ${minutes} min in).`,
@@ -265,7 +280,7 @@ export const register: Register = on => {
     if (parsed.goal === '') {
       if (s !== null && parsed.minutes !== undefined) {
         const minutes = parsed.minutes
-        await change($, cur => (cur === null ? cur : { ...cur, minutes }))
+        await change($, cur => (cur === null ? cur : { ...cur, nextMinutes: minutes }))
 
         return { text: `Rounds after this one will be ${minutes} min.` }
       }
@@ -310,8 +325,7 @@ export const register: Register = on => {
   on('command.run', { command: 'focus-check' }, async $ => {
     const s = await read($, session)
     if (s === null) return { text: 'No focus session running. Start one with /focus-on <goal>.' }
-    const now = await $.clock.now()
-    void $.prompt.submit({ text: CHECK_IN(s, focusedMinutes(s, now)) }).catch(() => undefined)
+    await checkIn($)
 
     return { text: 'Asking Claude for a check-in...' }
   })
@@ -361,7 +375,7 @@ export const register: Register = on => {
         {isWide && <Text dimColor>r{s.round}{s.parked.length > 0 ? ` | ${s.parked.length} parked` : ''}</Text>}
         <Button key="pause" label={s.pausedAt === null ? 'Pause' : 'Resume'} onPress={() => void togglePause($)} />
         <Button key="board" label="Board" onPress={() => void $.ui.open({ id: PANE, title: 'Focus' })} />
-        <Button key="done" label="Done" onPress={() => void $.command.run({ command: 'focus-done' }).catch(() => undefined)} />
+        <Button key="done" label="Done" onPress={() => void pressDone($)} />
       </Box>
     )
   })
@@ -431,9 +445,9 @@ export const register: Register = on => {
         </Box>
         <Box flexDirection="row" gap={1}>
           <Button key="pane-pause" label={s.pausedAt === null ? 'Pause' : 'Resume'} hotkey="p" onPress={() => void togglePause($)} />
-          <Button key="pane-check" label="Check-in" hotkey="c" onPress={() => void $.command.run({ command: 'focus-check' }).catch(() => undefined)} />
+          <Button key="pane-check" label="Check-in" hotkey="c" onPress={() => void checkIn($)} />
           {s.parked.length > 0 && <Button key="pane-clear" label="Clear parked" onPress={() => void change($, cur => (cur === null ? cur : { ...cur, parked: [] }))} />}
-          <Button key="pane-done" label="Done" variant="primary" hotkey="d" onPress={() => void $.command.run({ command: 'focus-done' }).catch(() => undefined)} />
+          <Button key="pane-done" label="Done" variant="primary" hotkey="d" onPress={() => void pressDone($)} />
         </Box>
       </Box>
     )
